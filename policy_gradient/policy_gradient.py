@@ -7,19 +7,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from tensorboardX import SummaryWriter
-from policy_gradient.pg_agent import Policy, choose_act
+from pg_agent import Policy, choose_act
 
-ENV_NAME = 'CartPole-v0'
+ENV_NAME = 'CartPole-v1'
 LEARNING_RATE = 0.01
 GAMMA = 0.99
 ENTROPY_BETA = 0.01
 EPISODES = 3000  # 收集3000条序列
 MAX_STEP = 1000  # 每条序列最多1000步
 
-env = gym.make(ENV_NAME)
+env = gym.make(ENV_NAME, render_mode="human")
 writer = SummaryWriter(comment="-cartpole-pg")
 # 策略梯度算法方差很大，设置seed以保证复现性
-#env.seed(1)
+# env.seed(1)
 torch.manual_seed(0)
 print("env.action_space: ", env.action_space.n)
 print("env.observation_space: ", env.observation_space.shape[0])
@@ -30,9 +30,10 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 policy = Policy(env.observation_space.shape[0], 16, env.action_space.n).to(device)
 optimizer = optim.Adam(policy.parameters(), lr=LEARNING_RATE)
 
+
 def norm_reward(R_tau):
     for i in range(1, len(R_tau)):
-        R_tau[i] = R_tau[i-1] + R_tau[i]
+        R_tau[i] = R_tau[i - 1] + R_tau[i]
 
     return (R_tau - np.mean(R_tau)) / np.std(R_tau)
 
@@ -41,6 +42,7 @@ def Vannilla_PG(n_episodes, max_step, gamma):
     total_rewards = []  # 保存每一个序列的回报
     for i_episode in range(n_episodes):
         state = env.reset()
+        print(state)
         ep_rewards = []  # 保存当前序列每一步的回报
         saved_log_probs = []  # 保存每一步动作的log probability
         for t in range(max_step):
@@ -53,8 +55,8 @@ def Vannilla_PG(n_episodes, max_step, gamma):
                 break
 
         total_rewards.append(sum(ep_rewards))
-        discounts = [gamma**i for i in range(len(ep_rewards))]
-        R_tau = sum([a*b for a, b in zip(discounts[::-1], ep_rewards)])
+        discounts = [gamma ** i for i in range(len(ep_rewards))]
+        R_tau = sum([a * b for a, b in zip(discounts[::-1], ep_rewards)])
         # baseline = np.mean(total_rewards)  # 过去所有序列的回报均值作为baseline
         # R_tau = R_tau - baseline
         # print(R_tau)
@@ -73,7 +75,7 @@ def Vannilla_PG(n_episodes, max_step, gamma):
             print('Episode {}\tAverage Score: {:.2f}'.format(i_episode, recent_reward))
             writer.add_scalar("reward_100", recent_reward, i_episode)
         if recent_reward >= 195.0:
-            print('Environment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, recent_reward))
+            print('Environment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100, recent_reward))
             torch.save(policy.state_dict(), 'model/pg_checkpoint.pth')
             break
 
@@ -100,8 +102,8 @@ def PG_with_constraints(n_episodes, max_step, gamma):
                 break
 
         total_rewards.append(sum(ep_rewards))
-        discounts = [gamma**i for i in range(len(ep_rewards))]
-        R_tau = sum([a*b for a, b in zip(discounts[::-1], ep_rewards)])
+        discounts = [gamma ** i for i in range(len(ep_rewards))]
+        R_tau = sum([a * b for a, b in zip(discounts[::-1], ep_rewards)])
         baseline = np.mean(total_rewards)  # 过去所有序列的回报均值作为baseline
         R_tau = R_tau - baseline
         # print(R_tau)
@@ -110,11 +112,11 @@ def PG_with_constraints(n_episodes, max_step, gamma):
         entropy_loss = torch.tensor([0.])
         for i, log_pi in enumerate(saved_log_probs):
             policy_loss += -log_pi * R_tau
-            entropy_loss += -(saved_prob[i]*torch.log(saved_prob[i])).sum(dim=1)
+            entropy_loss += -(saved_prob[i] * torch.log(saved_prob[i])).sum(dim=1)
 
         # print("Policy loss: ", policy_loss.item())
 
-        total_loss = policy_loss - ENTROPY_BETA*entropy_loss
+        total_loss = policy_loss - ENTROPY_BETA * entropy_loss
         optimizer.zero_grad()
         total_loss.backward()
         optimizer.step()
@@ -128,7 +130,7 @@ def PG_with_constraints(n_episodes, max_step, gamma):
             print('Episode {}\tAverage Score: {:.2f}'.format(i_episode, recent_reward))
             writer.add_scalar("reward_100", recent_reward, i_episode)
         if recent_reward >= 195.0:
-            print('Environment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, recent_reward))
+            print('Environment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100, recent_reward))
             break
 
     writer.close()
@@ -142,15 +144,17 @@ def watch_agent(model_flie='model/pg_checkpoint.pth'):
     rewards = []
     for i in range(10):  # episodes, play ten times
         total_reward = 0
-        state = env.reset()
+        state, info = env.reset()
+        print(state)
         for j in range(1000):  # frames, in case stuck in one frame
             action, _, _ = choose_act(policy, state)
             env.render()
-            next_state, reward, done, _ = env.step(action)
+            # next_state, reward, done, _ = env.step(action)
+            next_state, reward, terminated, truncated, info = env.step(action)
             state = next_state
             total_reward += reward
 
-            if done:
+            if terminated:
                 rewards.append(total_reward)
                 break
 
@@ -166,5 +170,5 @@ def watch_agent(model_flie='model/pg_checkpoint.pth'):
 # plt.ylabel('Score')
 # plt.xlabel('Episode #')
 # plt.show()
-
-watch_agent()
+if __name__ == '__main__':
+    watch_agent()

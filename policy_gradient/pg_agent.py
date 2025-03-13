@@ -20,12 +20,13 @@ class Policy(nn.Module):
 
 
 def choose_act(policy, state, device=torch.device("cpu")):
-    state = torch.from_numpy(state).float().unsqueeze(0).to(device)
-    probs = policy.forward(state).cpu()
+    state_dimup = torch.from_numpy(state).float().unsqueeze(0).to(device)
+    probs = policy.forward(state_dimup).cpu()
     m = Categorical(probs)
     action = m.sample()
     # m.log_prob(action)相当于probs.log()[0][action.item()].unsqueeze(0)
     return action.item(), m.log_prob(action), probs
+
 
 # np.random.seed(0)
 # # 测试模型维度
